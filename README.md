@@ -74,6 +74,12 @@ Works on all modern browsers:
 - Obstacles
 - Multiplayer mode
 
+## Last Updated
+
+- **Date**: August 24, 2026
+- **Version**: 1.0.1
+- **Status**: Game is fully functional and ready to play! 🎮
+
 ---
 
 **Made with ❤️ by Karan Mourya**
