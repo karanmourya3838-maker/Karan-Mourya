@@ -27,7 +27,7 @@
             max-width: 500px;
             aspect-ratio: 5/7;
             background: linear-gradient(180deg, #87ceeb 0%, #e0f6ff 100%);
-            border: 3px solid #333;
+            border: 4px solid #333;
             border-radius: 15px;
             box-shadow: 0 15px 35px rgba(0, 0, 0, 0.3);
             overflow: hidden;
@@ -140,7 +140,7 @@
         <canvas id="gameCanvas"></canvas>
         <div class="ui">
             <div class="score">Score: <span id="scoreNum">0</span></div>
-            <div class="info">🖱️ Move Mouse • Click to Shoot • Pop Bubbles!</div>
+            <div class="info">🖱️ Move Mouse • Click to Shoot</div>
             <div class="gameover" id="gameOver">
                 <h1>GAME OVER!</h1>
                 <p>Final Score: <span id="finalScore">0</span></p>
@@ -156,11 +156,13 @@
         canvas.width = 500;
         canvas.height = 700;
 
+        const GAME_AREA_HEIGHT = 550; // Top area for bubbles
+        const CANNON_AREA = canvas.height - GAME_AREA_HEIGHT;
+
         const game = {
             score: 0,
             gameOver: false,
             mouseX: canvas.width / 2,
-            mouseY: 0
         };
 
         class Bubble {
@@ -169,36 +171,53 @@
                 this.y = y;
                 this.radius = radius;
                 this.color = color;
-                this.vx = (Math.random() - 0.5) * 3;
-                this.vy = Math.random() * 1.5 + 0.5;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = Math.random() * 0.5 + 0.3; // Slow falling
+                this.alive = true;
             }
 
             update() {
                 this.x += this.vx;
                 this.y += this.vy;
-                this.vy += 0.2;
 
-                if (this.x - this.radius <= 0 || this.x + this.radius >= canvas.width) {
-                    this.vx *= -0.9;
-                    this.x = Math.max(this.radius, Math.min(canvas.width - this.radius, this.x));
+                // Keep bubbles in bounds horizontally
+                if (this.x - this.radius < 0) {
+                    this.vx = Math.abs(this.vx) * 0.8;
+                    this.x = this.radius;
+                }
+                if (this.x + this.radius > canvas.width) {
+                    this.vx = -Math.abs(this.vx) * 0.8;
+                    this.x = canvas.width - this.radius;
                 }
 
-                if (this.y - this.radius <= 0) {
-                    this.vy *= -0.9;
-                    this.y = this.radius;
+                // Keep bubbles in game area (don't go below)
+                if (this.y + this.radius > GAME_AREA_HEIGHT) {
+                    this.vy = 0;
+                    this.y = GAME_AREA_HEIGHT - this.radius;
+                }
+
+                // Top bounce
+                if (this.y - this.radius < 10) {
+                    this.vy = Math.abs(this.vy) * 0.8;
+                    this.y = 10 + this.radius;
                 }
             }
 
             draw() {
+                if (!this.alive) return;
+
+                // Main bubble
                 ctx.fillStyle = this.color;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 ctx.fill();
 
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                // Border
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
+                // Shine effect
                 const gradient = ctx.createRadialGradient(
                     this.x - this.radius/3, 
                     this.y - this.radius/3, 
@@ -207,7 +226,7 @@
                     this.y, 
                     this.radius
                 );
-                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
                 gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
                 ctx.fillStyle = gradient;
                 ctx.beginPath();
@@ -216,10 +235,16 @@
             }
 
             collidesWith(projectile) {
+                if (!this.alive) return false;
                 const dx = this.x - projectile.x;
                 const dy = this.y - projectile.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 return distance < this.radius + projectile.radius;
+            }
+
+            pop() {
+                this.alive = false;
+                return true;
             }
         }
 
@@ -227,9 +252,9 @@
             constructor(x, y, angle) {
                 this.x = x;
                 this.y = y;
-                this.radius = 7;
-                this.vx = Math.cos(angle) * 10;
-                this.vy = Math.sin(angle) * 10;
+                this.radius = 8;
+                this.vx = Math.cos(angle) * 12;
+                this.vy = Math.sin(angle) * 12;
                 this.active = true;
             }
 
@@ -237,12 +262,15 @@
                 this.x += this.vx;
                 this.y += this.vy;
 
+                // Stop if out of bounds
                 if (this.y < 0 || this.x < 0 || this.x > canvas.width) {
                     this.active = false;
                 }
             }
 
             draw() {
+                if (!this.active) return;
+
                 ctx.fillStyle = '#FFD700';
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -252,8 +280,9 @@
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
-                ctx.lineWidth = 4;
+                // Glow
+                ctx.strokeStyle = 'rgba(255, 215, 0, 0.5)';
+                ctx.lineWidth = 5;
                 ctx.stroke();
             }
         }
@@ -261,19 +290,23 @@
         class Cannon {
             constructor() {
                 this.x = canvas.width / 2;
-                this.y = canvas.height - 50;
-                this.angle = 0;
-                this.barrelLength = 55;
-                this.baseRadius = 30;
+                this.y = canvas.height - 30;
+                this.angle = -Math.PI / 2;
+                this.barrelLength = 50;
+                this.baseRadius = 28;
             }
 
             update(mouseX) {
                 const dx = mouseX - this.x;
-                const dy = 200 - this.y;
+                const dy = 100 - this.y;
                 this.angle = Math.atan2(dy, dx);
+                // Limit angle to shoot upwards only
+                if (this.angle > 0) this.angle = 0;
+                if (this.angle < -Math.PI) this.angle = -Math.PI;
             }
 
             draw() {
+                // Base
                 ctx.fillStyle = '#333';
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.baseRadius, 0, Math.PI * 2);
@@ -283,11 +316,12 @@
                 ctx.lineWidth = 3;
                 ctx.stroke();
 
+                // Barrel
                 const endX = this.x + Math.cos(this.angle) * this.barrelLength;
                 const endY = this.y + Math.sin(this.angle) * this.barrelLength;
 
                 ctx.strokeStyle = '#555';
-                ctx.lineWidth = 12;
+                ctx.lineWidth = 14;
                 ctx.lineCap = 'round';
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
@@ -295,7 +329,7 @@
                 ctx.stroke();
 
                 ctx.strokeStyle = '#999';
-                ctx.lineWidth = 5;
+                ctx.lineWidth = 6;
                 ctx.beginPath();
                 ctx.moveTo(this.x, this.y);
                 ctx.lineTo(endX, endY);
@@ -303,8 +337,8 @@
             }
 
             shoot() {
-                const startX = this.x + Math.cos(this.angle) * (this.baseRadius + 10);
-                const startY = this.y + Math.sin(this.angle) * (this.baseRadius + 10);
+                const startX = this.x + Math.cos(this.angle) * (this.baseRadius + 5);
+                const startY = this.y + Math.sin(this.angle) * (this.baseRadius + 5);
                 return new Projectile(startX, startY, this.angle);
             }
         }
@@ -317,16 +351,15 @@
             const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA502', '#FF85A2', '#96CEB4'];
             for (let i = 0; i < count; i++) {
                 const x = 60 + Math.random() * (canvas.width - 120);
-                const y = 80 + Math.random() * 180;
+                const y = 50 + Math.random() * 150;
                 const color = colors[Math.floor(Math.random() * colors.length)];
-                bubbles.push(new Bubble(x, y, 30, color));
+                bubbles.push(new Bubble(x, y, 25, color));
             }
         }
 
         document.addEventListener('mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
-            game.mouseX = e.clientX - rect.left;
-            game.mouseY = e.clientY - rect.top;
+            game.mouseX = Math.max(0, Math.min(canvas.width, e.clientX - rect.left));
         });
 
         document.addEventListener('click', () => {
@@ -342,36 +375,29 @@
 
         function handleCollisions() {
             for (let i = projectiles.length - 1; i >= 0; i--) {
+                if (!projectiles[i].active) continue;
+
                 for (let j = bubbles.length - 1; j >= 0; j--) {
                     if (bubbles[j].collidesWith(projectiles[i])) {
+                        // Pop bubble
+                        bubbles[j].pop();
                         projectiles[i].active = false;
-                        const bubble = bubbles[j];
-                        bubbles.splice(j, 1);
                         updateScore(10);
 
-                        if (bubble.radius > 18) {
-                            for (let k = 0; k < 2; k++) {
-                                const newBubble = new Bubble(
-                                    bubble.x + (Math.random() - 0.5) * 40,
-                                    bubble.y + (Math.random() - 0.5) * 40,
-                                    bubble.radius - 10,
-                                    bubble.color
-                                );
-                                bubbles.push(newBubble);
-                            }
-                        }
+                        // Remove dead bubbles and projectiles
+                        bubbles = bubbles.filter(b => b.alive);
                         break;
                     }
                 }
-                if (!projectiles[i].active) {
-                    projectiles.splice(i, 1);
-                }
             }
+
+            projectiles = projectiles.filter(p => p.active);
         }
 
         function checkGameOver() {
+            // Game over when any bubble reaches the cannon area
             for (let bubble of bubbles) {
-                if (bubble.y - bubble.radius > cannon.y - 60) {
+                if (bubble.alive && bubble.y + bubble.radius >= GAME_AREA_HEIGHT - 10) {
                     return true;
                 }
             }
@@ -379,13 +405,26 @@
         }
 
         function gameLoop() {
+            // Draw background
             const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
             gradient.addColorStop(0, '#87ceeb');
-            gradient.addColorStop(1, '#e0f6ff');
+            gradient.addColorStop(0.7, '#e0f6ff');
+            gradient.addColorStop(1, '#d0e8ff');
             ctx.fillStyle = gradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Draw separator line
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(0, GAME_AREA_HEIGHT);
+            ctx.lineTo(canvas.width, GAME_AREA_HEIGHT);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
             if (!game.gameOver) {
+                // Update
                 cannon.update(game.mouseX);
                 
                 for (let bubble of bubbles) {
@@ -396,6 +435,7 @@
                     projectile.update();
                 }
 
+                // Draw
                 for (let bubble of bubbles) {
                     bubble.draw();
                 }
@@ -406,6 +446,7 @@
 
                 cannon.draw();
 
+                // Check
                 handleCollisions();
 
                 if (checkGameOver()) {
@@ -414,9 +455,13 @@
                     document.getElementById('gameOver').style.display = 'block';
                 }
 
-                if (bubbles.length < 4) {
+                // Spawn more bubbles if needed
+                if (bubbles.filter(b => b.alive).length < 5) {
                     spawnBubbles(1);
                 }
+            } else {
+                // Draw cannon in game over state
+                cannon.draw();
             }
 
             requestAnimationFrame(gameLoop);
